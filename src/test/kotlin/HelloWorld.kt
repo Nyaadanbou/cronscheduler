@@ -3,10 +3,10 @@ import com.cronutils.ExecutionStatus
 import com.cronutils.model.Cron
 import com.cronutils.model.definition.CronDefinitionBuilder
 import com.cronutils.parser.CronParser
-import org.junit.Test
 import java.time.Duration
 import java.time.ZonedDateTime
 import java.time.temporal.ChronoUnit
+import kotlin.test.Test
 
 class HelloWorld {
     private val definitionWithoutSeconds = CronDefinitionBuilder.defineCron()
