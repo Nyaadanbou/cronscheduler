@@ -1,4 +1,4 @@
-package com.cronutils
+package cc.mewcraft.cronutils
 
 import com.cronutils.model.Cron
 import com.cronutils.model.field.CronFieldName

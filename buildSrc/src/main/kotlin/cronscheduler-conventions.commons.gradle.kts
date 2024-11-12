@@ -24,6 +24,7 @@ tasks {
             exclude("META-INF/maven/**")
             exclude("META-INF/LICENSE*")
             exclude("META-INF/NOTICE*")
+            exclude("checkstyle.xml")
         }
     }
     test {

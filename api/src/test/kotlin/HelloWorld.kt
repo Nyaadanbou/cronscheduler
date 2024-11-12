@@ -1,7 +1,7 @@
 @file:Suppress("OPT_IN_USAGE")
 
-import com.cronutils.CronScheduler
-import com.cronutils.ExecutionStatus
+import cc.mewcraft.cronutils.CronScheduler
+import cc.mewcraft.cronutils.ExecutionStatus
 import com.cronutils.model.Cron
 import com.cronutils.model.definition.CronDefinitionBuilder
 import com.cronutils.parser.CronParser

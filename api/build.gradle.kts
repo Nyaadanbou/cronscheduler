@@ -4,15 +4,17 @@ plugins {
     `maven-publish`
 }
 
-group = "cc.mewcraft.cron"
+group = "cc.mewcraft.cronscheduler"
 version = "0.0.1-SNAPSHOT"
 description = "A Kotlin CRON scheduler based on cron-utils library. Specially made for Linux cron format!"
 
 dependencies {
+    api(local.cronutils) {
+        exclude(group = "org.slf4j", module = "slf4j-api")
+    }
     compileOnly(local.guava)
-    compileOnly(local.cronutils)
-    testImplementation(local.guava)
     testImplementation(local.cronutils)
+    testImplementation(local.guava)
 }
 
 publishing {
@@ -26,7 +28,6 @@ publishing {
     }
     publications {
         create<MavenPublication>("maven") {
-            artifactId = "cron-scheduler"
             from(components["java"])
         }
     }

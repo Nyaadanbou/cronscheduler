@@ -1,6 +1,6 @@
 @file:Suppress("UnstableApiUsage")
 
-package com.cronutils
+package cc.mewcraft.cronutils
 
 import com.cronutils.model.Cron
 import com.google.common.util.concurrent.ThreadFactoryBuilder

@@ -1,4 +1,4 @@
-package com.cronutils
+package cc.mewcraft.cronutils
 
 enum class ExecutionStatus {
     WAITING,
