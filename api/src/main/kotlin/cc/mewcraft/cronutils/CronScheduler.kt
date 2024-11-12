@@ -17,15 +17,12 @@ class CronScheduler(
     pollingScope: CoroutineScope? = null,
     private val pollingClock: Clock = Clock.systemDefaultZone(),
 ) {
-    private companion object {
-        private val pollingExecutor: ExecutorService = Executors.newSingleThreadExecutor(
-            ThreadFactoryBuilder().setNameFormat("cron-poller-%d").setThreadFactory(Thread.ofVirtual().factory()).build()
-        )
-        private val workingExecutor: ExecutorService = Executors.newCachedThreadPool(
-            ThreadFactoryBuilder().setNameFormat("cron-worker-%d").build()
-        )
-    }
-
+    private val pollingExecutor: ExecutorService = Executors.newSingleThreadExecutor(
+        ThreadFactoryBuilder().setNameFormat("cron-poller-%d").setThreadFactory(Thread.ofVirtual().factory()).build()
+    )
+    private val workingExecutor: ExecutorService = Executors.newCachedThreadPool(
+        ThreadFactoryBuilder().setNameFormat("cron-worker-%d").build()
+    )
     private val pollingScope: CoroutineScope = pollingScope ?: (CoroutineScope(pollingExecutor.asCoroutineDispatcher()) + CoroutineName("cron-poller") + SupervisorJob())
     private val workingScope: CoroutineScope = CoroutineScope(workingExecutor.asCoroutineDispatcher()) + CoroutineName("cron-worker") + SupervisorJob() + CoroutineExceptionHandler { ctx, ex ->
         println("An error occurred while running job (id: ${ctx[CoroutineName]?.name})")
