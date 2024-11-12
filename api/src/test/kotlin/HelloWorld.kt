@@ -1,14 +1,24 @@
+@file:Suppress("OPT_IN_USAGE")
+
 import com.cronutils.CronScheduler
 import com.cronutils.ExecutionStatus
 import com.cronutils.model.Cron
 import com.cronutils.model.definition.CronDefinitionBuilder
 import com.cronutils.parser.CronParser
-import java.time.Duration
-import java.time.ZonedDateTime
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.plus
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runTest
+import java.time.*
 import java.time.temporal.ChronoUnit
 import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.time.DurationUnit
+import kotlin.time.toDuration
 
-class HelloWorld {
+class CronSchedulerTest {
+
+    // 定义 Cron 表达式解析器
     private val definitionWithoutSeconds = CronDefinitionBuilder.defineCron()
         .withMinutes().withValidRange(0, 59).withStrictRange()
         .and()
@@ -20,62 +30,102 @@ class HelloWorld {
         .and()
         .withDayOfWeek().withValidRange(0, 7).withMondayDoWValue(1).withIntMapping(7, 0).withStrictRange()
         .and()
-        .withSupportedNicknameYearly()
-        .withSupportedNicknameAnnually()
-        .withSupportedNicknameMonthly()
-        .withSupportedNicknameWeekly()
-        .withSupportedNicknameMidnight()
-        .withSupportedNicknameDaily()
-        .withSupportedNicknameHourly()
         .instance()
 
+    private val executedTasks = mutableListOf<String>()
+
+    private val pollingClock = MutableClock(Clock.fixed(Instant.now(), ZoneId.systemDefault()))
+
     @Test
-    fun test() {
-        val scheduler = CronScheduler()
+    fun `test cron scheduler`() = runTest {
+        val pollingScope = backgroundScope + CoroutineName("test-cron-poller")
 
-        // 获取当前时间和下一分钟时间
-        val now = ZonedDateTime.now()
-        val nextMinute = now.plusMinutes(1).truncatedTo(ChronoUnit.MINUTES)
+        val scheduler = CronScheduler(
+            pollingScope,
+            pollingClock
+        )
 
-        // 动态生成3个 Cron 表达式, 分别为接下来 1 分钟、2 分钟和 3 分钟后触发
-        val cron1 = generateCronForTime(nextMinute)
-        val cron2 = generateCronForTime(nextMinute.plusMinutes(1))
-        val cron3 = generateCronForTime(nextMinute.plusMinutes(2))
+        // 使用自定义的 Clock 获取当前时间
+        val now = ZonedDateTime.now(pollingClock).truncatedTo(ChronoUnit.MINUTES)
 
+        val cron1 = generateCronForTime(now.plusMinutes(1))
+        val cron2 = generateCronForTime(now.plusMinutes(2))
+        val cron3 = generateCronForTime(now.plusMinutes(3))
+
+        // 注册任务
         val name1 = "cron1"
         val name2 = "cron2"
         val name3 = "cron3"
 
-        // 注册 3 个 Cron 任务
-        scheduler.scheduleCronJob(name1, cron1) {
+        scheduler.schedule(name1, cron1) {
             ping(name1, cron1)
             ExecutionStatus.SUCCESS
         }
-        scheduler.scheduleCronJob(name2, cron2) {
+        scheduler.schedule(name2, cron2) {
             ping(name2, cron2)
             ExecutionStatus.SUCCESS
         }
-        scheduler.scheduleCronJob(name3, cron3) {
+        scheduler.schedule(name3, cron3) {
             ping(name3, cron3)
             ExecutionStatus.SUCCESS
         }
 
         // 启动调度器
-        scheduler.startPollingTask()
+        scheduler.start()
 
-        // 等待 3 分钟即可, 避免固定时间
-        Thread.sleep(Duration.ofMinutes(3).toMillis())
+        // 模拟时间流逝
+        repeat(60 * 24 * 7) {
+            advanceTimeBy(1.toDuration(DurationUnit.MINUTES).inWholeMilliseconds)
+            pollingClock.advance(Duration.ofMinutes(1)) // 同步调整自定义 Clock 的时间
+        }
+
+        // 验证任务是否执行
+        assertEquals(21, executedTasks.size, "Expected 3 tasks to be executed")
+        // 验证任务触发次数
+        assertEquals(7, executedTasks.count { it == name1 }, "Expected $name1 to be executed 7 times")
+        assertEquals(7, executedTasks.count { it == name2 }, "Expected $name2 to be executed 7 times")
+        assertEquals(7, executedTasks.count { it == name3 }, "Expected $name3 to be executed 7 times")
+
+        println("Shutting down the scheduler")
+        scheduler.shutdown()
     }
 
     // 根据指定时间生成对应的 Cron 表达式
     private fun generateCronForTime(time: ZonedDateTime): Cron {
-        val cronExpression = "${time.minute} ${time.hour} ${time.dayOfMonth} ${time.monthValue} ${time.dayOfWeek.value}"
+        // val cronExpression = "${time.minute} ${time.hour} ${time.dayOfMonth} ${time.monthValue} ${time.dayOfWeek.value}"
+        val cronExpression = "0 2 * * *"
+        println("generated cron expression: $cronExpression")
         return CronParser(definitionWithoutSeconds).parse(cronExpression)
     }
 
-    // 检查这个 Cron 有没有按照预期执行
+    // 处理任务执行结果
     private fun ping(name: String, cron: Cron) {
-        val currentTime = ZonedDateTime.now().truncatedTo(ChronoUnit.MINUTES)
+        val currentTime = ZonedDateTime.now(pollingClock).truncatedTo(ChronoUnit.MINUTES)
         println("$name - ${cron.asString()} - executed at $currentTime")
+        executedTasks.add(name) // 记录执行的任务
+    }
+}
+
+// 自定义 Clock 类, 用于同步虚拟时间
+class MutableClock(
+    private var base: Clock,
+) : Clock() {
+    private var offset: Duration = Duration.ZERO
+
+    fun advance(duration: Duration) {
+        offset = offset.plus(duration)
+    }
+
+    override fun getZone(): ZoneId {
+        return base.zone
+    }
+
+    override fun withZone(zone: ZoneId): Clock {
+        base = base.withZone(zone)
+        return this
+    }
+
+    override fun instant(): Instant {
+        return base.instant().plus(offset)
     }
 }

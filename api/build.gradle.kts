@@ -9,9 +9,9 @@ version = "0.0.1"
 description = "A Java job scheduler based on cron-utils library. Specially made for Linux cron format!"
 
 dependencies {
-    // compileOnly(local.guava)
+    compileOnly(local.guava)
     compileOnly(local.cronutils)
-    // testImplementation(local.guava)
+    testImplementation(local.guava)
     testImplementation(local.cronutils)
 }
 
