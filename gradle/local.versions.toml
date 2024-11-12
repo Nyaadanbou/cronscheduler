@@ -1,0 +1,23 @@
+[versions]
+
+shadow = "8.3.0"
+kotlin = "2.0.21"
+kotlinx-coroutines-core = "1.9.0"
+guava = "33.2.1-jre"
+cronutils = "9.2.0"
+
+[libraries]
+
+# Gradle plugins
+
+plugin-shadow = { group = "com.gradleup.shadow", name = "shadow-gradle-plugin", version.ref = "shadow" }
+plugin-kotlin-jvm = { group = "org.jetbrains.kotlin", name = "kotlin-gradle-plugin", version.ref = "kotlin" }
+plugin-kotlin-kapt = { group = "org.jetbrains.kotlin", name = "kotlin-gradle-plugin", version.ref = "kotlin" }
+plugin-nyaadanbou-conventions = { group = "cc.mewcraft.gradle", name = "conventions", version = "1.0-SNAPSHOT" }
+
+# Code dependencies
+
+cronutils = { group = "com.cronutils", name = "cron-utils", version.ref = "cronutils" }
+guava = { group = "com.google.guava", name = "guava", version.ref = "guava" }
+
+kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinx-coroutines-core" }
