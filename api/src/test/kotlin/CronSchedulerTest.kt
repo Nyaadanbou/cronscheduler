@@ -5,15 +5,14 @@ import cc.mewcraft.cronutils.ExecutionStatus
 import com.cronutils.model.Cron
 import com.cronutils.model.definition.CronDefinitionBuilder
 import com.cronutils.parser.CronParser
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.plus
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
+import org.junit.jupiter.api.BeforeEach
 import java.time.*
 import java.time.temporal.ChronoUnit
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.time.DurationUnit
-import kotlin.time.toDuration
+import kotlin.test.*
 
 class CronSchedulerTest {
 
@@ -31,12 +30,18 @@ class CronSchedulerTest {
         .and()
         .instance()
 
-    private val executedTasks = mutableListOf<String>()
+    private lateinit var executedTasks: MutableList<String>
 
-    private val pollingClock = MutableClock(Clock.fixed(Instant.now(), ZoneId.systemDefault()))
+    private lateinit var pollingClock: MutableClock
+
+    @BeforeEach
+    fun setUp() {
+        executedTasks = mutableListOf()
+        pollingClock = MutableClock(Clock.fixed(Instant.now(), ZoneId.systemDefault()))
+    }
 
     @Test
-    fun `test cron scheduler`() = runTest {
+    fun `test basic cron scheduler`() = runTest {
         val pollingScope = backgroundScope + CoroutineName("test-cron-poller")
 
         val scheduler = CronScheduler(
@@ -58,17 +63,14 @@ class CronSchedulerTest {
 
         scheduler.schedule(name1, cron1) {
             ping(name1, cron1)
-            // delay(10_000)
             ExecutionStatus.SUCCESS
         }
         scheduler.schedule(name2, cron2) {
             ping(name2, cron2)
-            // delay(10_000)
             ExecutionStatus.SUCCESS
         }
         scheduler.schedule(name3, cron3) {
             ping(name3, cron3)
-            // delay(10_000)
             ExecutionStatus.SUCCESS
         }
 
@@ -79,7 +81,7 @@ class CronSchedulerTest {
 
         // 模拟时间流逝
         repeat(60 * 24 * 7) {
-            advanceTimeBy(1.toDuration(DurationUnit.MINUTES).inWholeMilliseconds)
+            advanceTimeBy(60 * 1000)
             pollingClock.advance(Duration.ofMinutes(1)) // 同步调整自定义 Clock 的时间
         }
 
@@ -94,10 +96,59 @@ class CronSchedulerTest {
         scheduler.shutdown()
     }
 
+    @Test
+    fun `test uncaught exceptions in job`() = runTest {
+        val pollingScope = backgroundScope + CoroutineName("test-cron-poller")
+
+        val scheduler = CronScheduler(
+            pollingScope,
+            pollingClock
+        )
+
+        val cron1 = generateCronForTime(ZonedDateTime.now(pollingClock).plusMinutes(1))
+        val cron2 = generateCronForTime(ZonedDateTime.now(pollingClock).plusMinutes(2)) // 第二个任务的时间
+
+        val name1 = "cron1"
+        val name2 = "cron2"
+
+        var cron1Executed = false
+        var cron2Executed = false
+
+        // 定义第一个任务：故意抛出异常
+        scheduler.schedule(name1, cron1) {
+            throwException()
+            cron1Executed = true
+            ExecutionStatus.SUCCESS
+        }
+
+        // 定义第二个任务：正常执行
+        scheduler.schedule(name2, cron2) {
+            println("Executing job $name2")
+            cron2Executed = true
+            ExecutionStatus.SUCCESS
+        }
+
+        println("Starting the scheduler")
+
+        // 启动调度器
+        scheduler.start()
+
+        // 模拟时间流逝，触发 cron1 和 cron2
+        repeat(60 * 24) {
+            advanceTimeBy(60 * 1000)
+            pollingClock.advance(Duration.ofMinutes(1)) // 同步调整自定义 Clock 的时间
+        }
+
+        assertFalse(cron1Executed, "Cron1 should have been executed even though it threw an exception")
+        assertTrue(cron2Executed, "Cron2 should have been executed even though cron1 threw an exception")
+
+        println("Shutting down the scheduler")
+        scheduler.shutdown()
+    }
+
     // 根据指定时间生成对应的 Cron 表达式
     private fun generateCronForTime(time: ZonedDateTime): Cron {
-        // val cronExpression = "${time.minute} ${time.hour} ${time.dayOfMonth} ${time.monthValue} ${time.dayOfWeek.value}"
-        val cronExpression = "0 2 * * *"
+        val cronExpression = "0 2 * * *" // 每天 2:00AM
         println("generated cron expression: $cronExpression")
         return CronParser(definitionWithoutSeconds).parse(cronExpression)
     }
@@ -107,6 +158,10 @@ class CronSchedulerTest {
         val currentTime = ZonedDateTime.now(pollingClock).truncatedTo(ChronoUnit.MINUTES)
         println("$name - ${cron.asString()} - executed at $currentTime")
         executedTasks.add(name) // 记录执行的任务
+    }
+
+    private fun throwException() {
+        throw RuntimeException("Uncaught exception in job")
     }
 }
 

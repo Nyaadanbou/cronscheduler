@@ -6,9 +6,8 @@ import com.cronutils.model.Cron
 import kotlinx.coroutines.*
 import java.time.*
 import java.time.format.DateTimeFormatter
-import java.util.Collections
-import java.util.LinkedList
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 
 class CronScheduler(
     private val pollingScope: CoroutineScope = CoroutineScope(PollingCoroutineDispatcher.create() + CoroutineName("cron-poller") + SupervisorJob()),
@@ -22,7 +21,7 @@ class CronScheduler(
     private val workingScope: CoroutineScope = CoroutineScope(WorkerCoroutineDispatcher.create() + CoroutineName("cron-worker"))
 
     private val executingJobIds: MutableSet<String> = ConcurrentHashMap.newKeySet()
-    private val executableUnits: MutableList<ExecutableUnit> = Collections.synchronizedList(LinkedList())
+    private val executableUnits: MutableList<ExecutableUnit> = CopyOnWriteArrayList()
 
     /**
      * Schedules a cron job with a given name and cron expression.
@@ -65,6 +64,13 @@ class CronScheduler(
                     }
 
                     val nextJobId = next.job.id
+
+                    // 执行任务必须满足两个条件:
+                    // 1. 任务不存在于[执行中]列表
+                    // 2. 当前时间匹配任务的触发时间
+                    //
+                    // 对于 1, 这也就意味着如果一个任务无限执行下去 (极端情况),
+                    // 并且轮到了它的下一个执行时间, 那么这个任务将不会再次执行.
                     if (nextJobId !in executingJobIds && next.trigger.matchTime(now)) {
                         workingScope.launch(CoroutineName(nextJobId)) {
                             try {
@@ -74,6 +80,7 @@ class CronScheduler(
                             } catch (e: CancellationException) {
                                 println("Job $nextJobId is cancelled")
                             } finally {
+                                // 执行完毕后, 从[执行中]列表移除任务 ID
                                 executingJobIds.remove(nextJobId) // 始终移除任务 ID
                             }
                         }
