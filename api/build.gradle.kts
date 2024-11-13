@@ -1,6 +1,7 @@
 plugins {
     id("nyaadanbou-conventions.repositories")
     id("cronscheduler-conventions.commons")
+    id("org.jetbrains.kotlinx.atomicfu")
     `maven-publish`
 }
 

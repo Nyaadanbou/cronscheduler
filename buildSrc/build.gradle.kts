@@ -18,6 +18,7 @@ repositories {
 dependencies {
     implementation(local.plugin.kotlin.jvm)
     implementation(local.plugin.kotlin.kapt)
+    implementation(local.plugin.kotlin.atomicfu)
     implementation(local.plugin.shadow)
     implementation(local.plugin.nyaadanbou.conventions)
 }
