@@ -1,28 +1,32 @@
 package cc.mewcraft.cronutils
 
-import java.util.*
+import java.util.LinkedList
 
-abstract class CronJob(
+class CronJob(
     val id: String,
-) : Runnable {
-    private var status = ExecutionStatus.WAITING
-    private val statusHooks: MutableList<(ExecutionStatus) -> Unit> = LinkedList()
+    private val task: suspend () -> ExecutionStatus,
+) {
+    private var currentStatus = ExecutionStatus.WAITING
+    private val statusCallbacks: MutableList<(ExecutionStatus) -> Unit> = LinkedList()
 
-    protected abstract fun execute(): ExecutionStatus
-
-    override fun run() {
-        status = ExecutionStatus.RUNNING
-        status = execute()
-        reportStatus()
-    }
-
-    fun addStatusHook(hook: (ExecutionStatus) -> Unit) {
-        statusHooks.add(hook)
-    }
-
-    private fun reportStatus() {
-        statusHooks.forEach {
-            it.invoke(status)
+    suspend fun execute(): ExecutionStatus {
+        currentStatus = ExecutionStatus.RUNNING
+        currentStatus = try {
+            task.invoke()
+        } catch (e: Exception) {
+            // catch any uncaught exceptions and mark as failure
+            e.printStackTrace()
+            ExecutionStatus.FAILURE
         }
+        runStatusCallbacks()
+        return currentStatus
+    }
+
+    fun addStatusCallback(callback: (ExecutionStatus) -> Unit) {
+        statusCallbacks.add(callback)
+    }
+
+    private fun runStatusCallbacks() {
+        statusCallbacks.forEach { hook -> hook.invoke(currentStatus) }
     }
 }

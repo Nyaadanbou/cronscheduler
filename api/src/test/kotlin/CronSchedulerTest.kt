@@ -5,8 +5,7 @@ import cc.mewcraft.cronutils.ExecutionStatus
 import com.cronutils.model.Cron
 import com.cronutils.model.definition.CronDefinitionBuilder
 import com.cronutils.parser.CronParser
-import kotlinx.coroutines.CoroutineName
-import kotlinx.coroutines.plus
+import kotlinx.coroutines.*
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import java.time.*
@@ -59,16 +58,21 @@ class CronSchedulerTest {
 
         scheduler.schedule(name1, cron1) {
             ping(name1, cron1)
+            // delay(10_000)
             ExecutionStatus.SUCCESS
         }
         scheduler.schedule(name2, cron2) {
             ping(name2, cron2)
+            // delay(10_000)
             ExecutionStatus.SUCCESS
         }
         scheduler.schedule(name3, cron3) {
             ping(name3, cron3)
+            // delay(10_000)
             ExecutionStatus.SUCCESS
         }
+
+        println("Starting the scheduler")
 
         // 启动调度器
         scheduler.start()

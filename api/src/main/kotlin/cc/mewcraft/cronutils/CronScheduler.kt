@@ -3,31 +3,23 @@
 package cc.mewcraft.cronutils
 
 import com.cronutils.model.Cron
-import com.google.common.util.concurrent.ThreadFactoryBuilder
 import kotlinx.coroutines.*
-import java.time.Clock
-import java.time.ZonedDateTime
+import java.time.*
+import java.time.format.DateTimeFormatter
 import java.util.Collections
 import java.util.LinkedList
-import java.util.concurrent.*
-import kotlin.time.DurationUnit
-import kotlin.time.toDuration
+import java.util.concurrent.ConcurrentHashMap
 
 class CronScheduler(
-    pollingScope: CoroutineScope? = null,
+    private val pollingScope: CoroutineScope = CoroutineScope(PollingCoroutineDispatcher.create() + CoroutineName("cron-poller") + SupervisorJob()),
     private val pollingClock: Clock = Clock.systemDefaultZone(),
 ) {
-    private val pollingExecutor: ExecutorService = Executors.newSingleThreadExecutor(
-        ThreadFactoryBuilder().setNameFormat("cron-poller-%d").setThreadFactory(Thread.ofVirtual().factory()).build()
-    )
-    private val workingExecutor: ExecutorService = Executors.newCachedThreadPool(
-        ThreadFactoryBuilder().setNameFormat("cron-worker-%d").build()
-    )
-    private val pollingScope: CoroutineScope = pollingScope ?: (CoroutineScope(pollingExecutor.asCoroutineDispatcher()) + CoroutineName("cron-poller") + SupervisorJob())
-    private val workingScope: CoroutineScope = CoroutineScope(workingExecutor.asCoroutineDispatcher()) + CoroutineName("cron-worker") + SupervisorJob() + CoroutineExceptionHandler { ctx, ex ->
-        println("An error occurred while running job (id: ${ctx[CoroutineName]?.name})")
-        ex.printStackTrace()
+    private companion object {
+        private val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
     }
+
+    // we catch uncaught exceptions in the job, so we don't need to handle them here
+    private val workingScope: CoroutineScope = CoroutineScope(WorkerCoroutineDispatcher.create() + CoroutineName("cron-worker"))
 
     private val executingJobIds: MutableSet<String> = ConcurrentHashMap.newKeySet()
     private val executableUnits: MutableList<ExecutableUnit> = Collections.synchronizedList(LinkedList())
@@ -35,17 +27,13 @@ class CronScheduler(
     /**
      * Schedules a cron job with a given name and cron expression.
      */
-    fun schedule(name: String, cron: Cron, action: () -> ExecutionStatus) {
+    fun schedule(name: String, cron: Cron, action: suspend () -> ExecutionStatus) {
         val tri = CronTrigger(cron, pollingClock)
 
-        val job = object : CronJob(name) {
-            override fun execute(): ExecutionStatus {
-                return action()
-            }
-        }
+        val job = CronJob(name, action)
 
         val unit = ExecutableUnit(tri, job).apply {
-            this.job.addStatusHook {
+            this.job.addStatusCallback {
                 executingJobIds.remove(this.job.id)
             }
         }
@@ -63,6 +51,8 @@ class CronScheduler(
     fun start() {
         pollingScope.launch {
             while (isActive) {
+                println("Polling cron jobs at ${LocalDateTime.now(pollingClock).format(formatter)}")
+
                 val now = ZonedDateTime.now(pollingClock)
                 val iterator = executableUnits.listIterator()
                 while (iterator.hasNext()) {
@@ -80,7 +70,9 @@ class CronScheduler(
                             try {
                                 yield() // Stop here if the job is cancelled
                                 executingJobIds.add(nextJobId)
-                                next.job.run()
+                                next.job.execute()
+                            } catch (e: CancellationException) {
+                                println("Job $nextJobId is cancelled")
                             } finally {
                                 executingJobIds.remove(nextJobId) // 始终移除任务 ID
                             }
@@ -88,7 +80,7 @@ class CronScheduler(
                     }
                 }
 
-                delay(1.toDuration(DurationUnit.MINUTES))
+                delay(60 * 1000)
             }
         }
     }
@@ -100,17 +92,6 @@ class CronScheduler(
         try {
             pollingScope.cancel("Shutting down polling scope")
             workingScope.cancel("Shutting down working scope")
-
-            pollingExecutor.shutdown()
-            workingExecutor.shutdown()
-
-            if (!pollingExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-                throw TimeoutException("Polling executor did not terminate in the specified time.")
-            }
-
-            if (!workingExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-                throw TimeoutException("Working executor did not terminate in the specified time.")
-            }
         } catch (e: Exception) {
             e.printStackTrace()
         }
